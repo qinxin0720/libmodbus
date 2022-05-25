@@ -44,18 +44,6 @@ typedef enum {
     _MODBUS_BACKEND_TYPE_TCP
 } modbus_backend_type_t;
 
-/*
- *  ---------- Request     Indication ----------
- *  | Client | ---------------------->| Server |
- *  ---------- Confirmation  Response ----------
- */
-typedef enum {
-    /* Request message on the server side */
-    MSG_INDICATION,
-    /* Request message on the client side */
-    MSG_CONFIRMATION
-} msg_type_t;
-
 /* This structure reduces the number of params in functions and so
  * optimizes the speed of execution (~ 37%). */
 typedef struct _sft {
@@ -99,13 +87,15 @@ struct _modbus {
     struct timeval response_timeout;
     struct timeval byte_timeout;
     struct timeval indication_timeout;
+    modbus_meta_length_callback_t meta_length_callback;
+    modbus_data_length_callback_t data_length_callback;
     const modbus_backend_t *backend;
     void *backend_data;
 };
 
 void _modbus_init_common(modbus_t *ctx);
 void _error_print(modbus_t *ctx, const char *context);
-int _modbus_receive_msg(modbus_t *ctx, uint8_t *msg, msg_type_t msg_type);
+int _modbus_receive_msg(modbus_t *ctx, uint8_t *msg, modbus_msg_type_t msg_type);
 
 #ifndef HAVE_STRLCPY
 size_t strlcpy(char *dest, const char *src, size_t dest_size);

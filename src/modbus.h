@@ -238,6 +238,24 @@ MODBUS_API int modbus_reply(modbus_t *ctx, const uint8_t *req,
 MODBUS_API int modbus_reply_exception(modbus_t *ctx, const uint8_t *req,
                                       unsigned int exception_code);
 
+/*
+ *  ---------- Request     Indication ----------
+ *  | Client | ---------------------->| Server |
+ *  ---------- Confirmation  Response ----------
+ */
+typedef enum {
+    /* Request message on the server side */
+    MODBUS_MSG_INDICATION,
+    /* Request message on the client side */
+    MODBUS_MSG_CONFIRMATION
+} modbus_msg_type_t;
+
+typedef void (*modbus_meta_length_callback_t)(modbus_t *ctx, int function, modbus_msg_type_t msg_type, int *length);
+typedef void (*modbus_data_length_callback_t)(modbus_t *ctx, uint8_t *msg, modbus_msg_type_t msg_type, int *length);
+
+MODBUS_API int modbus_register_meta_length_callback(modbus_t *ctx, modbus_meta_length_callback_t cb);
+MODBUS_API int modbus_register_data_length_callback(modbus_t *ctx, modbus_data_length_callback_t cb);
+
 /**
  * UTILS FUNCTIONS
  **/

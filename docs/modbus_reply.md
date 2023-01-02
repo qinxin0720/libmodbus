@@ -21,7 +21,7 @@ modbus mapping `mb_mapping` according to the type of the manipulated data.
 
 If an error occurs, an exception response will be sent.
 
-This function is designed for Modbus server.
+This function is designed for Modbus servers.
 
 ## Return value
 
@@ -36,4 +36,4 @@ See also the errors returned by the syscall used to send the response (eg. send 
 
 ## See also
 
-- [modbus_reply_exception](modbus_reply_exception)
+- [modbus_reply_exception](modbus_reply_exception.md)

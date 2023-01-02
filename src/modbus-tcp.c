@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: LGPL-2.1-or-later
  */
 
+// clang-format off
 #if defined(_WIN32)
 # define OS_WIN32
 /* ws2_32.dll has getaddrinfo and freeaddrinfo on Windows XP and later.
@@ -29,6 +30,7 @@
 # include <ws2tcpip.h>
 # define SHUT_RDWR 2
 # define close closesocket
+# define strdup _strdup
 #else
 # include <sys/socket.h>
 # include <sys/ioctl.h>
@@ -52,11 +54,12 @@
 #if defined(_AIX) && !defined(MSG_DONTWAIT)
 #define MSG_DONTWAIT MSG_NONBLOCK
 #endif
+// clang-format on
 
 #include "modbus-private.h"
 
-#include "modbus-tcp.h"
 #include "modbus-tcp-private.h"
+#include "modbus-tcp.h"
 
 #ifdef OS_WIN32
 static int _modbus_tcp_init_win32(void)
@@ -65,8 +68,9 @@ static int _modbus_tcp_init_win32(void)
     WSADATA wsaData;
 
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
-        fprintf(stderr, "WSAStartup() returned error code %d\n",
-                (unsigned int)GetLastError());
+        fprintf(stderr,
+                "WSAStartup() returned error code %d\n",
+                (unsigned int) GetLastError());
         errno = EIO;
         return -1;
     }
@@ -76,8 +80,10 @@ static int _modbus_tcp_init_win32(void)
 
 static int _modbus_set_slave(modbus_t *ctx, int slave)
 {
+    int max_slave = (ctx->quirks & MODBUS_QUIRK_MAX_SLAVE) ? 255 : 247;
+
     /* Broadcast address is 0 (MODBUS_BROADCAST_ADDRESS) */
-    if (slave >= 0 && slave <= 247) {
+    if (slave >= 0 && slave <= max_slave) {
         ctx->slave = slave;
     } else if (slave == MODBUS_TCP_SLAVE) {
         /* The special value MODBUS_TCP_SLAVE (0xFF) can be used in TCP mode to
@@ -92,9 +98,8 @@ static int _modbus_set_slave(modbus_t *ctx, int slave)
 }
 
 /* Builds a TCP request header */
-static int _modbus_tcp_build_request_basis(modbus_t *ctx, int function,
-                                           int addr, int nb,
-                                           uint8_t *req)
+static int _modbus_tcp_build_request_basis(
+    modbus_t *ctx, int function, int addr, int nb, uint8_t *req)
 {
     modbus_tcp_t *ctx_tcp = ctx->backend_data;
 
@@ -146,7 +151,6 @@ static int _modbus_tcp_build_response_basis(sft_t *sft, uint8_t *rsp)
     return _MODBUS_TCP_PRESET_RSP_LENGTH;
 }
 
-
 static int _modbus_tcp_prepare_response_tid(const uint8_t *req, int *req_length)
 {
     return (req[0] << 8) + req[1];
@@ -169,15 +173,17 @@ static ssize_t _modbus_tcp_send(modbus_t *ctx, const uint8_t *req, int req_lengt
        Requests not to send SIGPIPE on errors on stream oriented
        sockets when the other end breaks the connection.  The EPIPE
        error is still returned. */
-    return send(ctx->s, (const char *)req, req_length, MSG_NOSIGNAL);
+    return send(ctx->s, (const char *) req, req_length, MSG_NOSIGNAL);
 }
 
-static int _modbus_tcp_receive(modbus_t *ctx, uint8_t *req) {
+static int _modbus_tcp_receive(modbus_t *ctx, uint8_t *req)
+{
     return _modbus_receive_msg(ctx, req, MODBUS_MSG_INDICATION);
 }
 
-static ssize_t _modbus_tcp_recv(modbus_t *ctx, uint8_t *rsp, int rsp_length) {
-    return recv(ctx->s, (char *)rsp, rsp_length, 0);
+static ssize_t _modbus_tcp_recv(modbus_t *ctx, uint8_t *rsp, int rsp_length)
+{
+    return recv(ctx->s, (char *) rsp, rsp_length, 0);
 }
 
 static int _modbus_tcp_check_integrity(modbus_t *ctx, uint8_t *msg, const int msg_length)
@@ -185,24 +191,29 @@ static int _modbus_tcp_check_integrity(modbus_t *ctx, uint8_t *msg, const int ms
     return msg_length;
 }
 
-static int _modbus_tcp_pre_check_confirmation(modbus_t *ctx, const uint8_t *req,
-                                              const uint8_t *rsp, int rsp_length)
+static int _modbus_tcp_pre_check_confirmation(modbus_t *ctx,
+                                              const uint8_t *req,
+                                              const uint8_t *rsp,
+                                              int rsp_length)
 {
+    unsigned int protocol_id;
     /* Check transaction ID */
     if (req[0] != rsp[0] || req[1] != rsp[1]) {
         if (ctx->debug) {
-            fprintf(stderr, "Invalid transaction ID received 0x%X (not 0x%X)\n",
-                    (rsp[0] << 8) + rsp[1], (req[0] << 8) + req[1]);
+            fprintf(stderr,
+                    "Invalid transaction ID received 0x%X (not 0x%X)\n",
+                    (rsp[0] << 8) + rsp[1],
+                    (req[0] << 8) + req[1]);
         }
         errno = EMBBADDATA;
         return -1;
     }
 
     /* Check protocol ID */
-    if (rsp[2] != 0x0 && rsp[3] != 0x0) {
+    protocol_id = (rsp[2] << 8) + rsp[3];
+    if (protocol_id != 0x0) {
         if (ctx->debug) {
-            fprintf(stderr, "Invalid protocol ID received 0x%X (not 0x0)\n",
-                    (rsp[2] << 8) + rsp[3]);
+            fprintf(stderr, "Invalid protocol ID received 0x%X (not 0x0)\n", protocol_id);
         }
         errno = EMBBADDATA;
         return -1;
@@ -219,8 +230,7 @@ static int _modbus_tcp_set_ipv4_options(int s)
     /* Set the TCP no delay flag */
     /* SOL_TCP = IPPROTO_TCP */
     option = 1;
-    rc = setsockopt(s, IPPROTO_TCP, TCP_NODELAY,
-                    (const void *)&option, sizeof(int));
+    rc = setsockopt(s, IPPROTO_TCP, TCP_NODELAY, (const void *) &option, sizeof(int));
     if (rc == -1) {
         return -1;
     }
@@ -248,8 +258,7 @@ static int _modbus_tcp_set_ipv4_options(int s)
      **/
     /* Set the IP low delay option */
     option = IPTOS_LOWDELAY;
-    rc = setsockopt(s, IPPROTO_IP, IP_TOS,
-                    (const void *)&option, sizeof(int));
+    rc = setsockopt(s, IPPROTO_IP, IP_TOS, (const void *) &option, sizeof(int));
     if (rc == -1) {
         return -1;
     }
@@ -258,7 +267,9 @@ static int _modbus_tcp_set_ipv4_options(int s)
     return 0;
 }
 
-static int _connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen,
+static int _connect(int sockfd,
+                    const struct sockaddr *addr,
+                    socklen_t addrlen,
                     const struct timeval *ro_tv)
 {
     int rc = connect(sockfd, addr, addrlen);
@@ -288,7 +299,7 @@ static int _connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen,
         }
 
         /* The connection is established if SO_ERROR and optval are set to 0 */
-        rc = getsockopt(sockfd, SOL_SOCKET, SO_ERROR, (void *)&optval, &optlen);
+        rc = getsockopt(sockfd, SOL_SOCKET, SO_ERROR, (void *) &optval, &optlen);
         if (rc == 0 && optval == 0) {
             return 0;
         } else {
@@ -340,8 +351,18 @@ static int _modbus_tcp_connect(modbus_t *ctx)
 
     addr.sin_family = AF_INET;
     addr.sin_port = htons(ctx_tcp->port);
-    addr.sin_addr.s_addr = inet_addr(ctx_tcp->ip);
-    rc = _connect(ctx->s, (struct sockaddr *)&addr, sizeof(addr), &ctx->response_timeout);
+    rc = inet_pton(addr.sin_family, ctx_tcp->ip, &(addr.sin_addr));
+    if (rc <= 0) {
+        if (ctx->debug) {
+            fprintf(stderr, "Invalid IP address: %s\n", ctx_tcp->ip);
+        }
+        close(ctx->s);
+        ctx->s = -1;
+        return -1;
+    }
+
+    rc =
+        _connect(ctx->s, (struct sockaddr *) &addr, sizeof(addr), &ctx->response_timeout);
     if (rc == -1) {
         close(ctx->s);
         ctx->s = -1;
@@ -377,8 +398,7 @@ static int _modbus_tcp_pi_connect(modbus_t *ctx)
     ai_hints.ai_next = NULL;
 
     ai_list = NULL;
-    rc = getaddrinfo(ctx_tcp_pi->node, ctx_tcp_pi->service,
-                     &ai_hints, &ai_list);
+    rc = getaddrinfo(ctx_tcp_pi->node, ctx_tcp_pi->service, &ai_hints, &ai_list);
     if (rc != 0) {
         if (ctx->debug) {
             fprintf(stderr, "Error returned by getaddrinfo: %s\n", gai_strerror(rc));
@@ -429,6 +449,11 @@ static int _modbus_tcp_pi_connect(modbus_t *ctx)
     return 0;
 }
 
+static unsigned int _modbus_tcp_is_connected(modbus_t *ctx)
+{
+    return ctx->s >= 0;
+}
+
 /* Closes the network connection and socket in TCP mode */
 static void _modbus_tcp_close(modbus_t *ctx)
 {
@@ -458,7 +483,7 @@ static int _modbus_tcp_flush(modbus_t *ctx)
         tv.tv_usec = 0;
         FD_ZERO(&rset);
         FD_SET(ctx->s, &rset);
-        rc = select(ctx->s+1, &rset, NULL, NULL, &tv);
+        rc = select(ctx->s + 1, &rset, NULL, NULL, &tv);
         if (rc == -1) {
             return -1;
         }
@@ -484,6 +509,7 @@ int modbus_tcp_listen(modbus_t *ctx, int nb_connection)
     int flags;
     struct sockaddr_in addr;
     modbus_tcp_t *ctx_tcp;
+    int rc;
 
     if (ctx == NULL) {
         errno = EINVAL;
@@ -510,8 +536,8 @@ int modbus_tcp_listen(modbus_t *ctx, int nb_connection)
     }
 
     enable = 1;
-    if (setsockopt(new_s, SOL_SOCKET, SO_REUSEADDR,
-                   (char *)&enable, sizeof(enable)) == -1) {
+    if (setsockopt(new_s, SOL_SOCKET, SO_REUSEADDR, (char *) &enable, sizeof(enable)) ==
+        -1) {
         close(new_s);
         return -1;
     }
@@ -525,9 +551,17 @@ int modbus_tcp_listen(modbus_t *ctx, int nb_connection)
         addr.sin_addr.s_addr = htonl(INADDR_ANY);
     } else {
         /* Listen only specified IP address */
-        addr.sin_addr.s_addr = inet_addr(ctx_tcp->ip);
+        rc = inet_pton(addr.sin_family, ctx_tcp->ip, &(addr.sin_addr));
+        if (rc <= 0) {
+            if (ctx->debug) {
+                fprintf(stderr, "Invalid IP address: %s\n", ctx_tcp->ip);
+            }
+            close(new_s);
+            return -1;
+        }
     }
-    if (bind(new_s, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+
+    if (bind(new_s, (struct sockaddr *) &addr, sizeof(addr)) == -1) {
         close(new_s);
         return -1;
     }
@@ -576,7 +610,7 @@ int modbus_tcp_pi_listen(modbus_t *ctx, int nb_connection)
         service = ctx_tcp_pi->service;
     }
 
-    memset(&ai_hints, 0, sizeof (ai_hints));
+    memset(&ai_hints, 0, sizeof(ai_hints));
     /* If node is not NULL, than the AI_PASSIVE flag is ignored. */
     ai_hints.ai_flags |= AI_PASSIVE;
 #ifdef AI_ADDRCONFIG
@@ -615,8 +649,8 @@ int modbus_tcp_pi_listen(modbus_t *ctx, int nb_connection)
             continue;
         } else {
             int enable = 1;
-            rc = setsockopt(s, SOL_SOCKET, SO_REUSEADDR,
-                            (void *)&enable, sizeof (enable));
+            rc =
+                setsockopt(s, SOL_SOCKET, SO_REUSEADDR, (void *) &enable, sizeof(enable));
             if (rc != 0) {
                 close(s);
                 if (ctx->debug) {
@@ -669,9 +703,9 @@ int modbus_tcp_accept(modbus_t *ctx, int *s)
     addrlen = sizeof(addr);
 #ifdef HAVE_ACCEPT4
     /* Inherit socket flags and use accept4 call */
-    ctx->s = accept4(*s, (struct sockaddr *)&addr, &addrlen, SOCK_CLOEXEC);
+    ctx->s = accept4(*s, (struct sockaddr *) &addr, &addrlen, SOCK_CLOEXEC);
 #else
-    ctx->s = accept(*s, (struct sockaddr *)&addr, &addrlen);
+    ctx->s = accept(*s, (struct sockaddr *) &addr, &addrlen);
 #endif
 
     if (ctx->s < 0) {
@@ -679,8 +713,12 @@ int modbus_tcp_accept(modbus_t *ctx, int *s)
     }
 
     if (ctx->debug) {
-        printf("The client connection from %s is accepted\n",
-               inet_ntoa(addr.sin_addr));
+        char buf[INET_ADDRSTRLEN];
+        if (inet_ntop(AF_INET, &(addr.sin_addr), buf, INET_ADDRSTRLEN) == NULL) {
+            fprintf(stderr, "Client connection accepted from unparsable IP.\n");
+        } else {
+            printf("Client connection accepted from %s.\n", buf);
+        }
     }
 
     return ctx->s;
@@ -688,7 +726,7 @@ int modbus_tcp_accept(modbus_t *ctx, int *s)
 
 int modbus_tcp_pi_accept(modbus_t *ctx, int *s)
 {
-    struct sockaddr_storage addr;
+    struct sockaddr_in6 addr;
     socklen_t addrlen;
 
     if (ctx == NULL) {
@@ -699,9 +737,9 @@ int modbus_tcp_pi_accept(modbus_t *ctx, int *s)
     addrlen = sizeof(addr);
 #ifdef HAVE_ACCEPT4
     /* Inherit socket flags and use accept4 call */
-    ctx->s = accept4(*s, (struct sockaddr *)&addr, &addrlen, SOCK_CLOEXEC);
+    ctx->s = accept4(*s, (struct sockaddr *) &addr, &addrlen, SOCK_CLOEXEC);
 #else
-    ctx->s = accept(*s, (struct sockaddr *)&addr, &addrlen);
+    ctx->s = accept(*s, (struct sockaddr *) &addr, &addrlen);
 #endif
 
     if (ctx->s < 0) {
@@ -709,16 +747,22 @@ int modbus_tcp_pi_accept(modbus_t *ctx, int *s)
     }
 
     if (ctx->debug) {
-        printf("The client connection is accepted.\n");
+        char buf[INET6_ADDRSTRLEN];
+        if (inet_ntop(AF_INET6, &(addr.sin6_addr), buf, INET6_ADDRSTRLEN) == NULL) {
+            fprintf(stderr, "Client connection accepted from unparsable IP.\n");
+        } else {
+            printf("Client connection accepted from %s.\n", buf);
+        }
     }
 
     return ctx->s;
 }
 
-static int _modbus_tcp_select(modbus_t *ctx, fd_set *rset, struct timeval *tv, int length_to_read)
+static int
+_modbus_tcp_select(modbus_t *ctx, fd_set *rset, struct timeval *tv, int length_to_read)
 {
     int s_rc;
-    while ((s_rc = select(ctx->s+1, rset, NULL, NULL, tv)) == -1) {
+    while ((s_rc = select(ctx->s + 1, rset, NULL, NULL, tv)) == -1) {
         if (errno == EINTR) {
             if (ctx->debug) {
                 fprintf(stderr, "A non blocked signal was caught\n");
@@ -739,14 +783,16 @@ static int _modbus_tcp_select(modbus_t *ctx, fd_set *rset, struct timeval *tv, i
     return s_rc;
 }
 
-static void _modbus_tcp_free(modbus_t *ctx) {
+static void _modbus_tcp_free(modbus_t *ctx)
+{
     if (ctx->backend_data) {
         free(ctx->backend_data);
     }
     free(ctx);
 }
 
-static void _modbus_tcp_pi_free(modbus_t *ctx) {
+static void _modbus_tcp_pi_free(modbus_t *ctx)
+{
     if (ctx->backend_data) {
         modbus_tcp_pi_t *ctx_tcp_pi = ctx->backend_data;
         free(ctx_tcp_pi->node);
@@ -757,6 +803,7 @@ static void _modbus_tcp_pi_free(modbus_t *ctx) {
     free(ctx);
 }
 
+// clang-format off
 const modbus_backend_t _modbus_tcp_backend = {
     _MODBUS_BACKEND_TYPE_TCP,
     _MODBUS_TCP_HEADER_LENGTH,
@@ -773,12 +820,12 @@ const modbus_backend_t _modbus_tcp_backend = {
     _modbus_tcp_check_integrity,
     _modbus_tcp_pre_check_confirmation,
     _modbus_tcp_connect,
+    _modbus_tcp_is_connected,
     _modbus_tcp_close,
     _modbus_tcp_flush,
     _modbus_tcp_select,
     _modbus_tcp_free
 };
-
 
 const modbus_backend_t _modbus_tcp_pi_backend = {
     _MODBUS_BACKEND_TYPE_TCP,
@@ -796,13 +843,16 @@ const modbus_backend_t _modbus_tcp_pi_backend = {
     _modbus_tcp_check_integrity,
     _modbus_tcp_pre_check_confirmation,
     _modbus_tcp_pi_connect,
+    _modbus_tcp_is_connected,
     _modbus_tcp_close,
     _modbus_tcp_flush,
     _modbus_tcp_select,
     _modbus_tcp_pi_free
 };
 
-modbus_t* modbus_new_tcp(const char *ip, int port)
+// clang-format on
+
+modbus_t *modbus_new_tcp(const char *ip, int port)
 {
     modbus_t *ctx;
     modbus_tcp_t *ctx_tcp;
@@ -822,7 +872,7 @@ modbus_t* modbus_new_tcp(const char *ip, int port)
     }
 #endif
 
-    ctx = (modbus_t *)malloc(sizeof(modbus_t));
+    ctx = (modbus_t *) malloc(sizeof(modbus_t));
     if (ctx == NULL) {
         return NULL;
     }
@@ -833,13 +883,13 @@ modbus_t* modbus_new_tcp(const char *ip, int port)
 
     ctx->backend = &_modbus_tcp_backend;
 
-    ctx->backend_data = (modbus_tcp_t *)malloc(sizeof(modbus_tcp_t));
+    ctx->backend_data = (modbus_tcp_t *) malloc(sizeof(modbus_tcp_t));
     if (ctx->backend_data == NULL) {
         modbus_free(ctx);
         errno = ENOMEM;
         return NULL;
     }
-    ctx_tcp = (modbus_tcp_t *)ctx->backend_data;
+    ctx_tcp = (modbus_tcp_t *) ctx->backend_data;
 
     if (ip != NULL) {
         dest_size = sizeof(char) * 16;
@@ -866,13 +916,12 @@ modbus_t* modbus_new_tcp(const char *ip, int port)
     return ctx;
 }
 
-
-modbus_t* modbus_new_tcp_pi(const char *node, const char *service)
+modbus_t *modbus_new_tcp_pi(const char *node, const char *service)
 {
     modbus_t *ctx;
     modbus_tcp_pi_t *ctx_tcp_pi;
 
-    ctx = (modbus_t *)malloc(sizeof(modbus_t));
+    ctx = (modbus_t *) malloc(sizeof(modbus_t));
     if (ctx == NULL) {
         return NULL;
     }
@@ -883,13 +932,13 @@ modbus_t* modbus_new_tcp_pi(const char *node, const char *service)
 
     ctx->backend = &_modbus_tcp_pi_backend;
 
-    ctx->backend_data = (modbus_tcp_pi_t *)malloc(sizeof(modbus_tcp_pi_t));
+    ctx->backend_data = (modbus_tcp_pi_t *) malloc(sizeof(modbus_tcp_pi_t));
     if (ctx->backend_data == NULL) {
         modbus_free(ctx);
         errno = ENOMEM;
         return NULL;
     }
-    ctx_tcp_pi = (modbus_tcp_pi_t *)ctx->backend_data;
+    ctx_tcp_pi = (modbus_tcp_pi_t *) ctx->backend_data;
     ctx_tcp_pi->node = NULL;
     ctx_tcp_pi->service = NULL;
 

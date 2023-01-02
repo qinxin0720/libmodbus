@@ -13,7 +13,7 @@
 #
 m4_define([libmodbus_version_major], [3])
 m4_define([libmodbus_version_minor], [1])
-m4_define([libmodbus_version_micro], [8])
+m4_define([libmodbus_version_micro], [10])
 
 m4_define([libmodbus_release_status],
     [m4_if(m4_eval(libmodbus_version_minor % 2), [1], [snapshot], [release])])
@@ -73,7 +73,9 @@ esac
 AM_CONDITIONAL(OS_WIN32, test "$os_win32" = "true")
 AM_CONDITIONAL(OS_QNX, test "$os_qnx" = "true")
 
+m4_pattern_forbid([^LT_INIT])dnl
 LT_INIT([disable-static win32-dll pic-only])
+
 AC_CHECK_HEADERS([ \
     arpa/inet.h \
     byteswap.h \
@@ -102,7 +104,7 @@ AC_CHECK_DECLS([__CYGWIN__])
 AC_SEARCH_LIBS(accept, network socket)
 
 # Checks for library functions.
-AC_CHECK_FUNCS([accept4 getaddrinfo gettimeofday inet_ntoa select socket strerror strlcpy])
+AC_CHECK_FUNCS([accept4 getaddrinfo gettimeofday inet_pton inet_ntop select socket strerror strlcpy])
 
 # Required for MinGW with GCC v4.8.1 on Win7
 AC_DEFINE(WINVER, 0x0501, _)

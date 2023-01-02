@@ -17,7 +17,7 @@ input registers to address `addr` of the remote device. The result of the
 reading is stored in `dest` array as word values (16 bits).
 
 You must take care to allocate enough memory to store the results in `dest` (at
-least `nb` * sizeof(uint16_t)).
+least `nb * sizeof(uint16_t)`).
 
 The function uses the Modbus function code 0x04 (read input registers). The
 holding registers and input registers have different historical meaning, but
@@ -34,6 +34,6 @@ successful. Otherwise it shall return -1 and set errno.
 
 ## See also
 
-- [modbus_read_input_bits](modbus_read_input_bits)
-- [modbus_write_register](modbus_write_register)
-- [modbus_write_registers](modbus_write_registers)
+- [modbus_read_input_bits](modbus_read_input_bits.md)
+- [modbus_write_register](modbus_write_register.md)
+- [modbus_write_registers](modbus_write_registers.md)
